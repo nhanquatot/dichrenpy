@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full bg-gray-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Công cụ dịch Ren'Py</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .container-card {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background-color: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .file-input-label {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            background-color: #4CAF50; /* Green */
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .file-input-label:hover {
+            background-color: #45a049;
+        }
+        .file-input-label input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 flex flex-col items-center justify-center p-4">
+
+    <div class="container-card w-full">
+        <h1 class="text-4xl font-bold text-center mb-2 text-gray-800">Công Cụ Dịch Ren'Py</h1>
+        <p class="text-center text-gray-600 mb-8">
+            Chọn chế độ dịch bạn muốn sử dụng và tải lên các file cần thiết.
+        </p>
+
+        <!-- Mode 1 -->
+        <div class="mb-10 p-6 bg-green-50 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Chế độ 1: Trích xuất và Bảo vệ</h2>
+            <p class="mb-4 text-gray-600">Tải lên file Ren'Py (.rpy) để trích xuất văn bản và tạo các mã tạm thời cho các placeholder.</p>
+            <div class="flex items-center space-x-4 mb-4">
+                <label class="file-input-label">
+                    Tải lên file .rpy
+                    <input type="file" id="rpyFileMode1" accept=".rpy">
+                </label>
+                <button id="processBtnMode1" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-full shadow-md hover:bg-blue-600 transition-colors duration-300">
+                    Bắt đầu
+                </button>
+            </div>
+            <div id="statusMode1" class="mt-4 text-sm text-gray-800"></div>
+            <div id="downloadLinksMode1" class="mt-4 space-x-2"></div>
+        </div>
+
+        <!-- Mode 2 -->
+        <div class="mb-10 p-6 bg-blue-50 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Chế độ 2: Khôi phục Placeholder</h2>
+            <p class="mb-4 text-gray-600">Tải lên file .txt đã dịch và file .json bản đồ để khôi phục các placeholder về dạng ban đầu.</p>
+            <div class="flex flex-col space-y-4 mb-4">
+                <label class="file-input-label">
+                    Tải lên file .txt đã dịch
+                    <input type="file" id="translatedFileMode2" accept=".txt">
+                </label>
+                <label class="file-input-label">
+                    Tải lên file .json bản đồ
+                    <input type="file" id="jsonFileMode2" accept=".json">
+                </label>
+                <button id="processBtnMode2" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-full shadow-md hover:bg-blue-600 transition-colors duration-300">
+                    Bắt đầu
+                </button>
+            </div>
+            <div id="statusMode2" class="mt-4 text-sm text-gray-800"></div>
+            <div id="downloadLinksMode2" class="mt-4 space-x-2"></div>
+        </div>
+
+        <!-- Mode 3 -->
+        <div class="p-6 bg-purple-50 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Chế độ 3: Chèn Văn bản đã Dịch</h2>
+            <p class="mb-4 text-gray-600">Tải lên file .txt đã dịch và file .rpy gốc để chèn các chuỗi đã dịch vào file gốc.</p>
+            <div class="flex flex-col space-y-4 mb-4">
+                <label class="file-input-label">
+                    Tải lên file .txt đã dịch
+                    <input type="file" id="translatedFileMode3" accept=".txt">
+                </label>
+                <label class="file-input-label">
+                    Tải lên file .rpy gốc
+                    <input type="file" id="rpyFileMode3" accept=".rpy">
+                </label>
+                <button id="processBtnMode3" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-full shadow-md hover:bg-blue-600 transition-colors duration-300">
+                    Bắt đầu
+                </button>
+            </div>
+            <div id="statusMode3" class="mt-4 text-sm text-gray-800"></div>
+            <div id="downloadLinksMode3" class="mt-4 space-x-2"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // Global helper functions
+            function showStatus(id, message, isError = false) {
+                const element = document.getElementById(id);
+                element.textContent = message;
+                element.className = `mt-4 text-sm ${isError ? 'text-red-600' : 'text-green-600'}`;
+            }
+
+            function downloadFile(content, filename, mimeType) {
+                const blob = new Blob([content], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.className = "px-4 py-2 bg-gray-500 text-white rounded-full shadow hover:bg-gray-600 transition-colors duration-300";
+                a.textContent = `Tải xuống ${filename}`;
+                return a;
+            }
+
+            // --- Chế độ 1 Logic ---
+            const rpyFileMode1Input = document.getElementById('rpyFileMode1');
+            const processBtnMode1 = document.getElementById('processBtnMode1');
+            const statusMode1 = document.getElementById('statusMode1');
+            const downloadLinksMode1 = document.getElementById('downloadLinksMode1');
+
+            processBtnMode1.addEventListener('click', async () => {
+                const file = rpyFileMode1Input.files[0];
+                if (!file) {
+                    showStatus('statusMode1', 'Vui lòng chọn một file .rpy!', true);
+                    return;
+                }
+
+                showStatus('statusMode1', 'Đang xử lý file...', false);
+                downloadLinksMode1.innerHTML = '';
+
+                const fileNameWithoutExt = file.name.replace(/\.rpy$/, '');
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const rpyContent = e.target.result;
+                    let translatedText = "";
+                    let placeholderMap = {};
+                    let placeholderCounter = 1;
+                    let processedRpyContent = "";
+
+                    // Regex để tìm các chuỗi trong dấu ngoặc kép ""
+                    // và bỏ qua các chuỗi trong old ""
+                    const dialogueRegex = /(?:^\s*(?:[a-zA-Z0-9_\-]+\s+)?"(.*?)"(?!.*old ".*"))/gm;
+                    
+                    // Regex để tìm các placeholder
+                    const placeholderRegex = /(\[[^\]]+\]|\{[^\}]+\}|\\n|\\t|%s|%d)/g;
+
+                    const lines = rpyContent.split('\n');
+                    lines.forEach((line, index) => {
+                        const originalLineNumber = index + 1;
+                        let processedLine = line;
+
+                        // Tìm các chuỗi trong dấu ngoặc kép
+                        const dialogueMatch = line.matchAll(/"(.*?)"/g);
+                        
+                        let lineHasDialogue = false;
+                        let lineModified = line;
+
+                        for (const match of dialogueMatch) {
+                            const originalString = match[1];
+
+                            // Bỏ qua các chuỗi trong old "..."
+                            if (line.trim().startsWith('old "')) {
+                                continue;
+                            }
+
+                            lineHasDialogue = true;
+                            let processedString = originalString;
+
+                            // Tìm và thay thế các placeholder trong chuỗi
+                            const placeholdersInString = originalString.matchAll(placeholderRegex);
+                            for (const placeholderMatch of placeholdersInString) {
+                                const placeholder = placeholderMatch[0];
+                                const tempCode = `@@${placeholderCounter}@@`;
+                                placeholderMap[tempCode] = placeholder;
+                                processedString = processedString.replace(placeholder, tempCode);
+                                placeholderCounter++;
+                            }
+
+                            // Thêm chuỗi đã xử lý vào file dịch
+                            translatedText += `${originalLineNumber}|||${processedString}\n`;
+                            
+                            // Cập nhật lại dòng gốc với chuỗi đã được mã hóa placeholder
+                            lineModified = lineModified.replace(`"${originalString}"`, `"${processedString}"`);
+                        }
+                        
+                        processedRpyContent += lineModified + '\n';
+                    });
+
+                    // Xử lý các placeholder độc lập nằm ngoài dấu ngoặc kép (nếu có)
+                    // (Đây là một bước tùy chọn, Ren'Py chủ yếu sử dụng placeholder trong chuỗi)
+                    
+                    // Tạo file .txt đã được mã hóa placeholder
+                    const translatedFileContent = translatedText.trim();
+                    const translatedFilename = `${fileNameWithoutExt}_dich.txt`;
+                    const translatedFileLink = downloadFile(translatedFileContent, translatedFilename, 'text/plain');
+
+                    // Tạo file .json bản đồ
+                    const jsonFileContent = JSON.stringify(placeholderMap, null, 2);
+                    const jsonFilename = `${fileNameWithoutExt}.json`;
+                    const jsonFileLink = downloadFile(jsonFileContent, jsonFilename, 'application/json');
+
+                    // Hiển thị kết quả và link tải xuống
+                    showStatus('statusMode1', 'Xử lý thành công! Vui lòng tải xuống các file.', false);
+                    downloadLinksMode1.appendChild(translatedFileLink);
+                    downloadLinksMode1.appendChild(jsonFileLink);
+                };
+                reader.readAsText(file, 'UTF-8');
+            });
+
+            // --- Chế độ 2 Logic ---
+            const translatedFileMode2Input = document.getElementById('translatedFileMode2');
+            const jsonFileMode2Input = document.getElementById('jsonFileMode2');
+            const processBtnMode2 = document.getElementById('processBtnMode2');
+            const statusMode2 = document.getElementById('statusMode2');
+            const downloadLinksMode2 = document.getElementById('downloadLinksMode2');
+
+            processBtnMode2.addEventListener('click', async () => {
+                const translatedFile = translatedFileMode2Input.files[0];
+                const jsonFile = jsonFileMode2Input.files[0];
+
+                if (!translatedFile || !jsonFile) {
+                    showStatus('statusMode2', 'Vui lòng chọn cả hai file!', true);
+                    return;
+                }
+
+                showStatus('statusMode2', 'Đang khôi phục placeholder...', false);
+                downloadLinksMode2.innerHTML = '';
+
+                const translatedTextReader = new FileReader();
+                const jsonReader = new FileReader();
+
+                translatedTextReader.onload = function(e) {
+                    const translatedContent = e.target.result;
+
+                    jsonReader.onload = function(e) {
+                        try {
+                            const placeholderMap = JSON.parse(e.target.result);
+                            let restoredContent = translatedContent;
+                            
+                            for (const tempCode in placeholderMap) {
+                                const placeholder = placeholderMap[tempCode];
+                                const regex = new RegExp(tempCode.replace(/@/g, '\\@'), 'g');
+                                restoredContent = restoredContent.replace(regex, placeholder);
+                            }
+                            
+                            const filename = translatedFile.name.replace(/_dich\.txt$/, '.txt');
+                            const downloadLink = downloadFile(restoredContent, filename, 'text/plain');
+
+                            showStatus('statusMode2', 'Khôi phục thành công! Tải xuống file.', false);
+                            downloadLinksMode2.appendChild(downloadLink);
+
+                        } catch (error) {
+                            showStatus('statusMode2', 'Lỗi: Không thể đọc file JSON. Vui lòng kiểm tra định dạng.', true);
+                        }
+                    };
+                    jsonReader.readAsText(jsonFile, 'UTF-8');
+                };
+                translatedTextReader.readAsText(translatedFile, 'UTF-8');
+            });
+
+            // --- Chế độ 3 Logic ---
+            const translatedFileMode3Input = document.getElementById('translatedFileMode3');
+            const rpyFileMode3Input = document.getElementById('rpyFileMode3');
+            const processBtnMode3 = document.getElementById('processBtnMode3');
+            const statusMode3 = document.getElementById('statusMode3');
+            const downloadLinksMode3 = document.getElementById('downloadLinksMode3');
+
+            processBtnMode3.addEventListener('click', async () => {
+                const translatedFile = translatedFileMode3Input.files[0];
+                const rpyFile = rpyFileMode3Input.files[0];
+
+                if (!translatedFile || !rpyFile) {
+                    showStatus('statusMode3', 'Vui lòng chọn cả hai file!', true);
+                    return;
+                }
+
+                showStatus('statusMode3', 'Đang chèn văn bản đã dịch...', false);
+                downloadLinksMode3.innerHTML = '';
+
+                const translatedReader = new FileReader();
+                const rpyReader = new FileReader();
+
+                translatedReader.onload = function(e) {
+                    const translatedContent = e.target.result;
+                    const translatedLines = translatedContent.split('\n');
+                    const translationMap = new Map();
+
+                    translatedLines.forEach(line => {
+                        const parts = line.split('|||');
+                        if (parts.length === 2) {
+                            const lineNumber = parseInt(parts[0].trim());
+                            const translatedString = parts[1].trim();
+                            if (!isNaN(lineNumber)) {
+                                translationMap.set(lineNumber, translatedString);
+                            }
+                        }
+                    });
+
+                    rpyReader.onload = function(e) {
+                        const rpyContent = e.target.result;
+                        const originalLines = rpyContent.split('\n');
+                        let newRpyContent = "";
+                        
+                        originalLines.forEach((line, index) => {
+                            const lineNumber = index + 1;
+                            let newLine = line;
+
+                            if (translationMap.has(lineNumber)) {
+                                const translatedString = translationMap.get(lineNumber);
+                                // Regex để tìm chuỗi trong ngoặc kép và thay thế nội dung
+                                const regex = /("(?:[^"\\]|\\.)*")/;
+                                newLine = line.replace(regex, `"${translatedString}"`);
+                            }
+                            newRpyContent += newLine + '\n';
+                        });
+
+                        const filename = rpyFile.name.replace(/\.rpy$/, '_translated.rpy');
+                        const downloadLink = downloadFile(newRpyContent, filename, 'text/plain');
+
+                        showStatus('statusMode3', 'Chèn thành công! Tải xuống file mới.', false);
+                        downloadLinksMode3.appendChild(downloadLink);
+                    };
+                    rpyReader.readAsText(rpyFile, 'UTF-8');
+                };
+                translatedReader.readAsText(translatedFile, 'UTF-8');
+            });
+
+        });
+    </script>
+
+</body>
+</html>
