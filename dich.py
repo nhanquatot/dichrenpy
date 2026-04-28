@@ -10,8 +10,8 @@ MAP_FILE = "translation_map.json"
 EXPORT_PREFIX = "export_source"
 IMPORT_PREFIX = "import_translated"
 
-# Regex để nhận diện các thẻ của Ren'py: [biến], {thẻ}, %s, %(biến)s
-TAG_PATTERN = re.compile(r'(\[[^\]]+\]|\{[^\}]+\}|%s|%\([^)]+\)[a-z])')
+# CẬP NHẬT: Regex bắt triệt để mọi thứ trong [...] và {...}, cũng như %s, %d, %(var)s
+TAG_PATTERN = re.compile(r'(\[.*?\]|\{.*?\}|%[a-zA-Z]|%\([^)]+\)[a-zA-Z])')
 
 def mask_text(text):
     """Thay thế các thẻ code thành @@0@@, @@1@@..."""
@@ -60,7 +60,7 @@ def scan_and_export():
             # CHỈ lấy nội dung từ các dòng có comment (bắt đầu bằng #) và có dấu ngoặc kép
             if stripped.startswith('#') and '"' in stripped:
                 
-                # Bỏ qua các dòng comment cấu trúc của Ren'py (ví dụ: # game/script.rpy:10)
+                # Bỏ qua các dòng comment cấu trúc của Ren'py
                 if stripped.startswith('# game/') or stripped.startswith('# TODO:'):
                     continue
 
@@ -81,9 +81,9 @@ def scan_and_export():
                         next_stripped = next_line.lstrip()
                         
                         if not next_stripped:
-                            continue # Bỏ qua dòng trống
+                            continue 
                         if next_stripped.startswith('#'):
-                            break # Nếu gặp comment mới thì dừng (nghĩa là không có dòng dịch)
+                            break 
                             
                         # Nếu tìm thấy dòng có chứa ngoặc kép mà không có dấu #
                         if '"' in next_stripped:
@@ -96,14 +96,13 @@ def scan_and_export():
                         t_first_quote = target_line.find('"')
                         t_last_quote = target_line.rfind('"')
                         
-                        # Cắt lấy tiền tố (VD: '    mc "') và hậu tố (VD: '"\n') của dòng chèn dịch
                         prefix = target_line[:t_first_quote + 1]
                         suffix = target_line[t_last_quote:]
                         
                         # Bọc các biến code lại
                         masked_text, masks = mask_text(source_text)
                         
-                        # LƯU VỊ TRÍ CỦA DÒNG BÊN DƯỚI (dòng mục tiêu)
+                        # LƯU VỊ TRÍ CỦA DÒNG BÊN DƯỚI
                         translation_map[str(line_id)] = {
                             "file": filepath,
                             "line_idx": target_idx,
@@ -121,7 +120,7 @@ def scan_and_export():
         json.dump(translation_map, f, ensure_ascii=False, indent=4)
     print(f"✔️ Đã tạo {MAP_FILE} thành công.")
 
-    # Chunking: Chia nhỏ file nếu vượt quá CHUNK_SIZE
+    # Chunking: Chia nhỏ file
     total_lines = len(export_lines)
     if total_lines == 0:
         print("⚠️ Không có dòng thoại nào cần dịch.")
@@ -188,17 +187,24 @@ def merge_and_import():
                 else:
                     continue
             
-            # Tiền xử lý bản dịch
             raw_translated_text = translated_data[t_id]
-            safe_translated_text = raw_translated_text.replace('"', "'")
+            
+            # CẬP NHẬT: Xử lý lỗi % của Ren'py (Đổi % thành %% nếu nó đứng một mình)
+            # Dùng regex (?<!%)%(?!%) để bắt ký tự % không có % ở trước hoặc sau nó
+            safe_translated_text = re.sub(r'(?<!%)%(?!%)', '%%', raw_translated_text)
+            
+            # Đổi " thành '
+            safe_translated_text = safe_translated_text.replace('"', "'")
+            
+            # Unmask: Khôi phục lại biến sau khi đã xử lý xong % và "
             final_text = unmask_text(safe_translated_text, mapped_info["masks"])
             
-            # Chèn đúng vào vị trí prefix và suffix của dòng mục tiêu (dòng mc "")
+            # Ghi đè vào dòng
             new_line = mapped_info["prefix"] + final_text + mapped_info["suffix"]
             files_to_update[filepath][line_idx] = new_line
             success_count += 1
 
-    # Ghi đè vào các file .rpy
+    # Lưu lại vào file .rpy
     for filepath, lines in files_to_update.items():
         with open(filepath, 'w', encoding='utf-8') as f:
             f.writelines(lines)
