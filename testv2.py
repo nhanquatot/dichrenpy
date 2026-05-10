@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CẤU HÌNH MẶC ĐỊNH (CÁC THƯ MỤC LÀM VIỆC)
+# ⚙️ CẤU HÌNH MẶC ĐỊNH
 # ==========================================
 CHUNK_SIZE = 5000
 MAP_DIR = "map/"
@@ -26,7 +26,6 @@ def setup_dirs():
         os.makedirs(d, exist_ok=True)
 
 def load_progress():
-    """Đọc trạng thái progress.json"""
     path = os.path.join(LOG_DIR, "progress.json")
     if os.path.exists(path):
         with open(path, "r", encoding=ENCODING) as f:
@@ -34,15 +33,12 @@ def load_progress():
     return {}
 
 def save_progress(progress):
-    """Lưu trạng thái progress.json"""
     path = os.path.join(LOG_DIR, "progress.json")
     with open(path, "w", encoding=ENCODING) as f:
         json.dump(progress, f, indent=4)
 
 def mask_text(text):
-    """Trích xuất placeholder và trả về chuỗi đã mask"""
     masks = []
-    # Tìm các tag Ren'Py thông dụng: [var], {b}, {/b}, {color=#fff}
     def repl(match):
         masks.append(match.group(0))
         return PLACEHOLDER_PATTERN.format(len(masks)-1)
@@ -51,7 +47,6 @@ def mask_text(text):
     return masked_text, masks
 
 def unmask_text(masked_text, masks):
-    """Khôi phục placeholder từ chuỗi đã mask"""
     text = masked_text
     for i, mask in enumerate(masks):
         placeholder = PLACEHOLDER_PATTERN.format(i)
@@ -61,7 +56,7 @@ def unmask_text(masked_text, masks):
     return text
 
 # ==========================================
-# 1️⃣ CHỨC NĂNG SCAN & EXPORT
+# 1️⃣ CHỨC NĂNG SCAN & EXPORT (CẬP NHẬT THEO LOGIC REN'PY CHUẨN)
 # ==========================================
 def cmd_export(source_lang_dir):
     print(f"\n🚀 Bắt đầu quá trình SCAN & EXPORT từ: {source_lang_dir}")
@@ -72,7 +67,7 @@ def cmd_export(source_lang_dir):
     current_chunk_map = {}
     global_id = 1
     
-    # Lấy danh sách file .rpy
+    # Lấy danh sách chỉ quét file .rpy
     rpy_files = []
     for root, _, files in os.walk(source_lang_dir):
         for file in files:
@@ -91,44 +86,80 @@ def cmd_export(source_lang_dir):
             print(f"❌ Lỗi đọc file {filepath}: {e}")
             continue
 
-        for line_idx, line in enumerate(lines):
-            # Regex parse dòng code Ren'Py chứa chuỗi: prefix "text" suffix
-            match = re.match(r'^(\s*(?:[a-zA-Z0-9_]+\s+)?)("(.*(?<!\\))"|\'(.*(?<!\\))\')(\s*)$', line)
-            
-            # Chỉ bắt dòng có thoại (không bắt dòng comment bắt đầu bằng #)
-            if match and not line.lstrip().startswith("#"):
-                prefix = match.group(1)
-                full_quotes = match.group(2)
-                original_text = match.group(3) if match.group(3) is not None else match.group(4)
-                suffix = match.group(5)
+        for idx in range(len(lines)):
+            line = lines[idx]
+            stripped = line.lstrip()
+
+            # Chỉ lấy nội dung từ các dòng có comment (bắt đầu bằng #) và có dấu ngoặc kép
+            if stripped.startswith('#') and '"' in stripped:
                 
-                # Unescape quote để xử lý mask dễ hơn
-                original_text_unescaped = original_text.replace('\\"', '"').replace("\\'", "'")
+                # Bỏ qua các dòng comment cấu trúc của Ren'py
+                if stripped.startswith('# game/') or stripped.startswith('# TODO:'):
+                    continue
+
+                first_quote = line.find('"')
+                last_quote = line.rfind('"')
                 
-                masked_text, masks = mask_text(original_text_unescaped)
-                str_id = f"{global_id:06d}"
-                
-                # Lưu vào map
-                current_chunk_map[str_id] = {
-                    "file": filepath,
-                    "line_idx": line_idx,
-                    "prefix": prefix,
-                    "suffix": suffix,
-                    "masks": masks,
-                    "original_text": original_text,
-                    "quote_char": full_quotes[0]
-                }
-                
-                # Lưu vào export
-                current_chunk_data.append(f"{str_id}{DELIMITER}{masked_text}\n")
-                global_id += 1
-                
-                # Flush chunk nếu đạt giới hạn
-                if len(current_chunk_data) >= CHUNK_SIZE:
-                    save_chunk(chunk_idx, current_chunk_data, current_chunk_map)
-                    chunk_idx += 1
-                    current_chunk_data = []
-                    current_chunk_map = {}
+                if first_quote != -1 and last_quote != -1 and first_quote != last_quote:
+                    # Lấy text gốc để mang đi dịch
+                    source_text = line[first_quote + 1:last_quote]
+                    
+                    if not source_text.strip():
+                        continue
+
+                    # Tìm dòng chứa bản dịch bên dưới
+                    target_idx = -1
+                    for j in range(idx + 1, len(lines)):
+                        next_line = lines[j]
+                        next_stripped = next_line.lstrip()
+                        
+                        if not next_stripped:
+                            continue 
+                        if next_stripped.startswith('#'):
+                            break 
+                            
+                        # Nếu tìm thấy dòng có chứa ngoặc kép mà không có dấu #
+                        if '"' in next_stripped:
+                            target_idx = j
+                            break
+                            
+                    # Nếu tìm thấy dòng đích để chèn bản dịch
+                    if target_idx != -1:
+                        target_line = lines[target_idx]
+                        t_first_quote = target_line.find('"')
+                        t_last_quote = target_line.rfind('"')
+                        
+                        # An toàn kiểm tra ngoặc ở target line
+                        if t_first_quote != -1 and t_last_quote != -1 and t_first_quote != t_last_quote:
+                            # prefix và suffix đã bao gồm ngoặc kép bên trong
+                            prefix = target_line[:t_first_quote + 1]
+                            suffix = target_line[t_last_quote:]
+                            
+                            # Unescape source text trước khi mask
+                            source_text_unescaped = source_text.replace('\\"', '"')
+                            
+                            # Bọc các biến code lại
+                            masked_text, masks = mask_text(source_text_unescaped)
+                            
+                            str_id = f"{global_id:06d}"
+                            
+                            current_chunk_map[str_id] = {
+                                "file": filepath,
+                                "line_idx": target_idx,  # Lưu trữ dòng đích (để import đúng chỗ)
+                                "prefix": prefix,
+                                "suffix": suffix,
+                                "masks": masks,
+                                "original_text": source_text
+                            }
+                            
+                            current_chunk_data.append(f"{str_id}{DELIMITER}{masked_text}\n")
+                            global_id += 1
+                            
+                            if len(current_chunk_data) >= CHUNK_SIZE:
+                                save_chunk(chunk_idx, current_chunk_data, current_chunk_map)
+                                chunk_idx += 1
+                                current_chunk_data = []
+                                current_chunk_map = {}
                     
     # Lưu phần còn dư
     if current_chunk_data:
@@ -200,20 +231,25 @@ def cmd_import(target_chunk=None):
         success_count = 0
         skipped_count = 0
         
-        for line_raw in import_lines:
-            line = line_raw.strip('\n')
+        # SỬ DỤNG enumerate ĐỂ LẤY SỐ DÒNG CỦA FILE TXT (BẮT ĐẦU TỪ 1)
+        for import_line_idx, line_raw in enumerate(import_lines, start=1):
+            # Dùng strip() trống để xóa cả \n, \r và khoảng trắng vô tình lọt vào đầu/cuối dòng
+            line = line_raw.strip() 
             if not line: continue
             
             parts = line.split(DELIMITER, 1)
             if len(parts) < 2:
-                log_error(errors, "malformed_line", "UNKNOWN", "UNKNOWN", -1, "", line, "Thiếu delimiter |||")
+                log_error(errors, "malformed_line", "NO_ID", f"import_{part_name}.txt", import_line_idx, "", line, "Thiếu delimiter |||")
                 skipped_count += 1
                 continue
                 
-            item_id, translated_text = parts[0], parts[1]
+            # Đảm bảo gọt sạch khoảng trắng xung quanh ID 
+            # (VD: lỡ tay gõ "000001 |||" -> vẫn nhận đúng "000001")
+            item_id = parts[0].strip() 
+            translated_text = parts[1] # Giữ nguyên text, vì đôi khi dịch cần khoảng trắng
             
             if item_id in import_data:
-                log_error(errors, "duplicated_id", item_id, "UNKNOWN", -1, "", translated_text, "Kept last, skipped previous")
+                log_error(errors, "duplicated_id", item_id, f"import_{part_name}.txt", import_line_idx, "", translated_text, "Kept last, skipped previous")
             
             import_data[item_id] = translated_text
             
@@ -247,14 +283,11 @@ def cmd_import(target_chunk=None):
                 skipped_count += 1
                 continue
                 
-            final_text = translated_unmasked.replace('%', '\\%')
-            quote_char = map_info["quote_char"]
-            if quote_char == '"':
-                final_text = final_text.replace('"', '\\"')
-            elif quote_char == "'":
-                final_text = final_text.replace("'", "\\'")
-                
-            final_line = f"{map_info['prefix']}{quote_char}{final_text}{quote_char}{map_info['suffix']}\n"
+            # Cần escape % theo cấu trúc Ren'Py và escape double quote (" -> \")
+            final_text = translated_unmasked.replace('%', '\\%').replace('"', '\\"')
+            
+            # CẬP NHẬT: prefix và suffix đã tự bao gồm ngoặc kép ("), nên không cần bọc thêm nữa
+            final_line = f"{map_info['prefix']}{final_text}{map_info['suffix']}"
             
             if file_path not in file_updates:
                 file_updates[file_path] = {}
@@ -289,7 +322,6 @@ def cmd_import(target_chunk=None):
                 continue
 
         elapsed = int(time.time() - start_time)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         
         if errors:
             with open(os.path.join(LOG_DIR, f"errors_{part_name}.json"), "w", encoding=ENCODING) as f:
@@ -305,7 +337,7 @@ def cmd_import(target_chunk=None):
         save_progress(progress)
 
 # ==========================================
-# 🚀 MENU TƯƠNG TÁC (INTERACTIVE ENTRYPOINT)
+# 🚀 MENU TƯƠNG TÁC
 # ==========================================
 def main_menu():
     setup_dirs()
@@ -323,7 +355,6 @@ def main_menu():
         
         if choice == '1':
             source_dir = input("📂 Nhập đường dẫn thư mục chứa file .rpy (VD: game/tl/vietnamese): ").strip()
-            # Bỏ dấu nháy kép nếu người dùng copy paste từ Windows
             source_dir = source_dir.strip('"').strip("'")
             if os.path.exists(source_dir):
                 cmd_export(source_dir)
